@@ -36,6 +36,31 @@ def reset():
     line = ''
     calculator.config(text=line)
 
+#if user doesn't press del after calculation, let them use the result
+def not_done_calculating(result):
+    global var, negative, decimal, saved_operations, has_started, decimals_place, pointer, line
+    var.clear()
+    saved_operations.clear()
+    negative.clear()
+    decimal.clear()
+    has_started.clear()
+    decimals_place.clear()
+    var.append(abs(result))
+    saved_operations.append('')
+    negative.append(result < 0)
+    decimal.append('.' in str(result))
+    decimal_tracker = str(result)
+    decimal_tracker_counter = 0
+    for char in decimal_tracker:
+        if char != '.':
+            decimal_tracker_counter += 1
+        else:
+            break
+    decimals_place.append(10 * 10 ** len(decimal_tracker[(decimal_tracker_counter+1):]))
+    has_started.append(True)
+    pointer = 0
+    line = str(result)
+
 #simple calculator functions
 def add(num_one, num_two):
     result = num_one + num_two
@@ -50,6 +75,8 @@ def multiply(num_one, num_two):
     return result
 
 def divide(num_one, num_two):
+    if num_two == 0:
+        raise ZeroDivisionError("Cannot divide by zero")
     result = num_one / num_two
     return result
 
@@ -92,25 +119,45 @@ def numbers(number):
         var[pointer] += (int(number)/decimals_place[pointer]) # type: ignore
         decimals_place[pointer] *= 10
 
-#access the calculation functions, applies negatives, updates display
+#access the calculation functions, applies negatives, updates display, follows order of operations
 def calculate():
-    global var, saved_operations, negative, pointer
+    global var, saved_operations, negative, pointer, line
     if negative[pointer] == True:
         var[pointer] *= (-1)
+    backup_operations = saved_operations.copy()
+    backup_var = var.copy()
+    for i, sign in enumerate(backup_operations):
+        if sign in ('/', '*'):
+            if sign == '/':
+                try:
+                    backup_var[i+1] = divide(backup_var[i], backup_var[i+1]) # type: ignore
+                except ZeroDivisionError:
+                    calculator.config(text="UNDEF")
+                    return
+                backup_var[i+1] = round(backup_var[i+1], 10)
+                backup_var[i] = None # type: ignore
+            elif sign == '*':
+                backup_var[i+1] = multiply(backup_var[i], backup_var[i+1]) # type: ignore
+                backup_var[i+1] = round(backup_var[i+1], 10)
+                backup_var[i] = None # type: ignore
+    for i in range(len(backup_var)-1, -1, -1):
+        if backup_var[i] == None:
+            del backup_var[i]
+            del backup_operations[i]
+    saved_operations = backup_operations.copy()
+    var = backup_var.copy()
+    if len(var) == len(saved_operations) and len(saved_operations) != 1:
+        del saved_operations[len(saved_operations) - 1]
     result = var[0]
-    #not following order of operations currently
     for i, sign in enumerate(saved_operations):
         if sign == '+':
             result = add(result, var[i+1])
-        if sign == '-':
+        elif sign == '-':
             result = subtract(result, var[i+1])
-        if sign == '*':
-            result = multiply(result, var[i+1])
-        if sign == '/':
-            result = divide(result, var[i+1])
         result = round(result, 10)
     calculator.config(text=str(result))
-        
+    not_done_calculating(result)
+      
 #button inputs
 def button_command(label):
     global line, var, negative, decimal, pointer, saved_operations, has_started, decimals_place
@@ -122,7 +169,7 @@ def button_command(label):
             has_started[pointer] = True
             numbers(label)
         elif label == '=':
-            calculate() 
+            calculate()
     else:
         reset()
         
@@ -142,6 +189,7 @@ for j in range(5):
 calculator=tk.Label(frm, text="0", height=3, width = 3)
 calculator.grid(row=0, column=0, columnspan=5, sticky='nsew', padx=5, pady=2)
 calculator.config(font=('TkDefaultFont', 24), anchor='e', bg='white', fg='black', relief='sunken')
+
 #making buttons
 buttons=[
     ['7', '8', '9', '/', 'del'],
